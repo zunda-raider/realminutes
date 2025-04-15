@@ -1,95 +1,64 @@
-import Image from "next/image";
-import styles from "./page.module.css";
+'use client'
+
+import { useState, useRef } from 'react'
+import { supabase } from '../lib/supabase'
 
 export default function Home() {
-  return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol>
-          <li>
-            Get started by editing <code>app/page.tsx</code>.
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const [recording, setRecording] = useState(false)
+  const [audioUrl, setAudioUrl] = useState<string | null>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const chunks = useRef<Blob[]>([])
 
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-            className={styles.secondary}
-          >
-            Read our docs
-          </a>
+  const startRecording = async () => {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    mediaRecorderRef.current = new MediaRecorder(stream)
+
+    mediaRecorderRef.current.ondataavailable = e => {
+      chunks.current.push(e.data)
+    }
+
+    mediaRecorderRef.current.onstop = () => {
+      const blob = new Blob(chunks.current, { type: 'audio/webm' })
+      setAudioUrl(URL.createObjectURL(blob))
+      uploadAudio(blob) // ←ここでSupabaseにアップロード✨
+      chunks.current = []
+    }
+
+    mediaRecorderRef.current.start()
+    setRecording(true)
+  }
+
+  const stopRecording = () => {
+    mediaRecorderRef.current?.stop()
+    setRecording(false)
+  }
+
+  const uploadAudio = async (blob: Blob) => {
+    const filename = `recording_${Date.now()}.webm`
+    const { data, error } = await supabase.storage
+      .from('minutes') // バケット名が "minutes" ならOK✨
+      .upload(filename, blob)
+
+    if (error) {
+      alert('アップロード失敗しちゃった💦：' + error.message)
+    } else {
+      alert('アップロード成功〜！🎉')
+      console.log('✅ URL:', data)
+    }
+  }
+
+  return (
+    <div style={{ padding: '2rem' }}>
+      <h1>🎙️ realminutes – 録音アプリ</h1>
+      <button onClick={recording ? stopRecording : startRecording}>
+        {recording ? '🔴 停止' : '▶️ 録音開始'}
+      </button>
+      {audioUrl && (
+        <div>
+          <h2>🎧 録音結果</h2>
+          <audio controls src={audioUrl} />
         </div>
-      </main>
-      <footer className={styles.footer}>
-        <a
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      )}
     </div>
-  );
+  )
 }
